@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from
 import { MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }) {
   const [selectedPeriod, setSelectedPeriod] = useState('daily');
 
   const quickActions = [
@@ -12,6 +12,7 @@ export default function DashboardScreen() {
       title: 'New Transaction',
       icon: <MaterialCommunityIcons name="cash-plus" size={24} color="#FFF" />,
       gradient: ['#FF6B6B', '#FF8E8E'],
+      onPress: () => navigation.navigate('NewTransaction'),
     },
     {
       id: 2,
@@ -94,7 +95,7 @@ export default function DashboardScreen() {
   );
 
   const renderQuickAction = (action) => (
-    <TouchableOpacity key={action.id} style={styles.actionButton}>
+    <TouchableOpacity key={action.id} style={styles.actionButton} onPress={action.onPress} >
       <LinearGradient
         colors={action.gradient}
         style={styles.actionGradient}
