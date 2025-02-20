@@ -3,16 +3,67 @@ import {
   View,
   Text,
   TextInput,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
+
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
+import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { styles } from '../styles/newTransactionStyles';
+import TransactionService from '../utils/api'; 
 
-export default function NewTransaction() {  const [formData, setFormData] = useState({
+const API_URL = 'https://your-api-endpoint.com/transactions';
+
+// async function saveTransactionToBackend(transaction) {
+//   try {
+//     const response = await fetch(API_URL, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({
+//         ...transaction,
+//         date: transaction.date.toISOString(),
+//       }),
+//     });
+
+//     if (!response.ok) {
+//       throw new Error(`HTTP error! status: ${response.status}`);
+//     }
+
+//     return await response.json();
+//   } catch (error) {
+//     console.error('Error saving transaction to backend:', error);
+//     throw error;
+//   }
+// }
+
+async function saveTransactionLocally(transaction) {
+  try {
+    const existingTransactions = await AsyncStorage.getItem('transactions');
+    const transactions = existingTransactions ? JSON.parse(existingTransactions) : [];
+    transactions.push(transaction);
+    await AsyncStorage.setItem('transactions', JSON.stringify(transactions));
+  } catch (error) {
+    console.error('Error saving transaction locally:', error);
+    throw error;
+  }
+}
+
+const fieldLabels = {
+  vehicleNo: 'Vehicle Number',
+  customerName: 'Customer Name',
+  shippingAddress: 'Shipping Address',
+  quantity: 'Quantity',
+  totalAmount: 'Total Amount',
+  driverName: 'Driver Name',
+};
+
+export default function NewTransaction() {
+  const [formData, setFormData] = useState({
     transactionId: generateTransactionId(),
     date: new Date(),
     vehicleNo: '',
@@ -28,6 +79,7 @@ export default function NewTransaction() {  const [formData, setFormData] = useS
   });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const materials = [
     'Select Material',
@@ -40,44 +92,78 @@ export default function NewTransaction() {  const [formData, setFormData] = useS
   ];
 
   const paymentStatuses = ['Paid', 'Unpaid', 'Partially Paid'];
-  
+
   function generateTransactionId() {
     return 'TXN' + Date.now().toString().slice(-6);
-  }  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Paid':
-        return '#34C759';
-      case 'Partially Paid':
-        return '#FF9500';
-      case 'Unpaid':
-        return '#FF3B30';
-      default:
-        return '#007AFF';
-    }
-  };
+  }
 
-  const handleSubmit = () => {
-    // Validate form data
-    if (!formData.vehicleNo || !formData.customerName || !formData.shippingAddress || !formData.totalAmount) {
-      alert('Please fill in all required fields');
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    const requiredFields = [
+      'vehicleNo',
+      'customerName',
+      'shippingAddress',
+      'quantity',
+      'totalAmount',
+      'driverName',
+    ];
+    const missingFields = requiredFields.filter(field => !formData[field]);
+  
+    if (missingFields.length > 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Missing Fields',
+        text2: `Please fill in: ${missingFields.map(field => fieldLabels[field]).join(', ')}`,
+      });
+      setIsSubmitting(false);
       return;
     }
-    console.log('Form submitted:', formData);
-    // Reset form
-    setFormData({
+  
+    const transactionData = {
       ...formData,
-      transactionId: generateTransactionId(),
-      vehicleNo: '',
-      customerName: '',
-      shippingAddress: '',
-      material: '',
-      quantity: '',
-      paymentStatus: 'Unpaid',
-      driverName: '',
-      notes: '',
-    });
+      quantity: Number(formData.quantity),
+      totalAmount: Number(formData.totalAmount),
+      paymentReceived: Number(formData.paymentReceived) || 0,
+    };
+  
+    try {
+      // Try to save to backend
+      await TransactionService.createTransaction(transactionData);
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Transaction submitted successfully!',
+      });
+  
+      // Reset form
+      setFormData({
+        ...formData,
+        transactionId: generateTransactionId(),
+        vehicleNo: '',
+        customerName: '',
+        shippingAddress: '',
+        material: '',
+        quantity: '',
+        totalAmount: '',
+        paymentReceived: '',
+        paymentStatus: 'Unpaid',
+        driverName: '',
+        notes: '',
+      });
+    } catch (error) {
+      // Fallback to local storage
+      await saveTransactionLocally(transactionData);
+      Toast.show({
+        type: 'info',
+        text1: 'Stored Locally',
+        text2: 'Transaction saved locally and will sync when online',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
+  
   const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
@@ -85,6 +171,7 @@ export default function NewTransaction() {  const [formData, setFormData] = useS
     }
   };
 
+  
   return (
     <ScrollView style={styles.container}>
 
@@ -277,206 +364,3 @@ export default function NewTransaction() {  const [formData, setFormData] = useS
 }
 
 
-const styles = StyleSheet.create({
-  currencyInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },  currencySymbol: {
-    fontSize: 16,
-    color: '#2E5CAC',
-    marginLeft: 12,
-    fontWeight: '600',
-    minWidth: 35,
-  },
-  amountInput: {
-    flex: 1,
-    marginLeft: 4,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#F0F4F8',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8EEF4',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  headerText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginLeft: 12,
-    color: '#2E5CAC',
-  },
-  form: {
-    padding: 20,
-  },
-  fieldContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#486581',
-    marginBottom: 8,
-    letterSpacing: 0.3,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    color: '#334E68',
-    borderWidth: 1,
-    borderColor: '#E8EEF4',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  readOnlyInput: {
-    backgroundColor: '#EDF2F7',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E8EEF4',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  readOnlyText: {
-    fontSize: 16,
-    color: '#486581',
-    fontWeight: '500',
-  },
-  dateInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E8EEF4',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  dateText: {
-    fontSize: 16,
-    color: '#334E68',
-    fontWeight: '500',
-  },  pickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E8EEF4',
-    overflow: 'hidden',
-    position: 'relative',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-    paddingHorizontal: 14,
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  pickerIcon: {
-    position: 'absolute',
-    right: 10,
-    top: '50%',
-    transform: [{ translateY: -12 }],
-    zIndex: 1,
-    pointerEvents: 'none',
-  },
-  submitButton: {
-    backgroundColor: '#2E5CAC',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#2E5CAC',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 5,
-      },
-    }),
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-});
